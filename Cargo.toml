@@ -1,0 +1,10 @@
+[package]
+name = "rs-chess"
+version = "0.1.0"
+authors = ["Gurtej Kanwar <gurtejkanwar@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+cairo-rs = "0.9"
+pixels = "0.3"
+winit = "0.24"
