@@ -8,6 +8,7 @@ use winit::{
   event::{DeviceEvent, ElementState, Event, KeyboardInput, ScanCode, WindowEvent},
   event_loop::{ControlFlow, EventLoop},
 };
+use rsvg::{Handle, HandleExt};
 
 const WIDTH: usize = 8;
 const HEIGHT: usize = 8;
@@ -80,6 +81,7 @@ struct GameState {
   castling: CastlingState,
   active: Color,
   en_passant: Option<Square>,
+  chess_set: ChessSet
   // TODO: move counters
 }
 impl GameState {
@@ -89,6 +91,7 @@ impl GameState {
       castling: CastlingState::new(),
       active: Color::White,
       en_passant: None,
+      chess_set: ChessSet::cburnett()
     }
   }
 }
@@ -495,6 +498,62 @@ fn get_legal_moves(gs: &GameState) -> Vec<Move> {
   return moves;
 }
 
+fn get_fen_piece(piece_chr: &char) -> Piece {
+  match piece_chr {
+    'p' => Piece {
+      color: Color::Black,
+      kind: PieceKind::Pawn,
+    },
+    'r' => Piece {
+      color: Color::Black,
+      kind: PieceKind::Rook,
+    },
+    'n' => Piece {
+      color: Color::Black,
+      kind: PieceKind::Knight,
+    },
+    'b' => Piece {
+      color: Color::Black,
+      kind: PieceKind::Bishop,
+    },
+    'q' => Piece {
+      color: Color::Black,
+      kind: PieceKind::Queen,
+    },
+    'k' => Piece {
+      color: Color::Black,
+      kind: PieceKind::King,
+    },
+    'P' => Piece {
+      color: Color::White,
+      kind: PieceKind::Pawn,
+    },
+    'R' => Piece {
+      color: Color::White,
+      kind: PieceKind::Rook,
+    },
+    'N' => Piece {
+      color: Color::White,
+      kind: PieceKind::Knight,
+    },
+    'B' => Piece {
+      color: Color::White,
+      kind: PieceKind::Bishop,
+    },
+    'Q' => Piece {
+      color: Color::White,
+      kind: PieceKind::Queen,
+    },
+    'K' => Piece {
+      color: Color::White,
+      kind: PieceKind::King,
+    },
+    _ => {
+      panic!("Unknown piece")
+    }
+  }
+}
+
 fn parse_fen_board(board_str: &str) -> Result<BoardState, &'static str> {
   let rows: Vec<_> = board_str.split("/").collect();
   if rows.len() != HEIGHT {
@@ -508,59 +567,7 @@ fn parse_fen_board(board_str: &str) -> Result<BoardState, &'static str> {
         if j + 1 > WIDTH {
           return Err("Too many squares in FEN board row");
         }
-        board_state.squares[j][HEIGHT - i - 1] = SquareContent::Filled(match c {
-          'p' => Piece {
-            color: Color::Black,
-            kind: PieceKind::Pawn,
-          },
-          'r' => Piece {
-            color: Color::Black,
-            kind: PieceKind::Rook,
-          },
-          'n' => Piece {
-            color: Color::Black,
-            kind: PieceKind::Knight,
-          },
-          'b' => Piece {
-            color: Color::Black,
-            kind: PieceKind::Bishop,
-          },
-          'q' => Piece {
-            color: Color::Black,
-            kind: PieceKind::Queen,
-          },
-          'k' => Piece {
-            color: Color::Black,
-            kind: PieceKind::King,
-          },
-          'P' => Piece {
-            color: Color::White,
-            kind: PieceKind::Pawn,
-          },
-          'R' => Piece {
-            color: Color::White,
-            kind: PieceKind::Rook,
-          },
-          'N' => Piece {
-            color: Color::White,
-            kind: PieceKind::Knight,
-          },
-          'B' => Piece {
-            color: Color::White,
-            kind: PieceKind::Bishop,
-          },
-          'Q' => Piece {
-            color: Color::White,
-            kind: PieceKind::Queen,
-          },
-          'K' => Piece {
-            color: Color::White,
-            kind: PieceKind::King,
-          },
-          _ => {
-            panic!("Unknown piece")
-          }
-        });
+        board_state.squares[j][HEIGHT - i - 1] = SquareContent::Filled(get_fen_piece(&c));
         j += 1;
       }
       else {
@@ -613,14 +620,14 @@ fn parse_square(sq_str: &str) -> Result<Square, &'static str> {
   if sq_str.len() < 2 {
     return Err("Invalid square string");
   }
-  let mut col: char = sq_str.chars().next().unwrap().to_ascii_lowercase();
+  let col: char = sq_str.chars().next().unwrap().to_ascii_lowercase();
   if !col.is_ascii_alphabetic() {
     return Err("Invalid square column");
   }
   let mut buf = [0; 1];
   let col_i: usize = (col.encode_utf8(&mut buf).as_bytes()[0] - b'a').into();
   let row = &sq_str[1..];
-  let mut row_i: usize;
+  let row_i: usize;
   match row.parse::<usize>() {
     Ok(i) => {
       row_i = i - 1;
@@ -705,10 +712,8 @@ mod tests {
 
   #[test]
   fn test_parse_fen() {
-    let gs: GameState =
-      parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
-    let gs: GameState =
-      parse_fen("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2").unwrap();
+    parse_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+    parse_fen("rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2").unwrap();
   }
 
   #[test]
@@ -771,54 +776,72 @@ fn create_window(
   return window;
 }
 
-fn render_piece(ctx: &cairo::Context, piece: Piece, x: f64, y: f64, dx: f64, dy: f64) -> () {
-  // stroke/fill closures
-  let set_fill_color = || {
-    match piece.color {
-      Color::Black => {
-        ctx.set_source_rgb(0.0, 0.0, 0.0);
-      }
-      Color::White => {
-        ctx.set_source_rgb(1.0, 1.0, 1.0);
-      }
-    };
-  };
-  let set_stroke_color = || {
-    match piece.color {
-      Color::Black => {
-        ctx.set_source_rgb(1.0, 1.0, 1.0);
-      }
-      Color::White => {
-        ctx.set_source_rgb(0.0, 0.0, 0.0);
-      }
-    };
-  };
-  let line_width: f64 = 0.006;
-  ctx.set_line_width(line_width);
-  match piece.kind {
-    PieceKind::Pawn => {
-      set_fill_color();
-      ctx.arc(x + dx / 2.0, y + dy / 2.0, 0.25 * dx, -PI, PI);
-      ctx.fill_preserve();
-      set_stroke_color();
-      ctx.stroke();
+#[derive(Debug)]
+struct ChessSet {
+  white_king: Handle,
+  black_king: Handle,
+  white_queen: Handle,
+  black_queen: Handle,
+  white_rook: Handle,
+  black_rook: Handle,
+  white_bishop: Handle,
+  black_bishop: Handle,
+  white_knight: Handle,
+  black_knight: Handle,
+  white_pawn: Handle,
+  black_pawn: Handle
+}
+impl ChessSet {
+  pub fn cburnett() -> Self {
+    ChessSet {
+      white_king: Handle::new_from_data(include_bytes!("../media/cburnett/K.svg")).unwrap(),
+      black_king: Handle::new_from_data(include_bytes!("../media/cburnett/k.svg")).unwrap(),
+      white_queen: Handle::new_from_data(include_bytes!("../media/cburnett/Q.svg")).unwrap(),
+      black_queen: Handle::new_from_data(include_bytes!("../media/cburnett/q.svg")).unwrap(),
+      white_rook: Handle::new_from_data(include_bytes!("../media/cburnett/R.svg")).unwrap(),
+      black_rook: Handle::new_from_data(include_bytes!("../media/cburnett/r.svg")).unwrap(),
+      white_bishop: Handle::new_from_data(include_bytes!("../media/cburnett/B.svg")).unwrap(),
+      black_bishop: Handle::new_from_data(include_bytes!("../media/cburnett/b.svg")).unwrap(),
+      white_knight: Handle::new_from_data(include_bytes!("../media/cburnett/N.svg")).unwrap(),
+      black_knight: Handle::new_from_data(include_bytes!("../media/cburnett/n.svg")).unwrap(),
+      white_pawn: Handle::new_from_data(include_bytes!("../media/cburnett/P.svg")).unwrap(),
+      black_pawn: Handle::new_from_data(include_bytes!("../media/cburnett/p.svg")).unwrap(),
     }
-    PieceKind::Knight => {
-      set_fill_color();
-      ctx.arc_negative(x + 0.1 * dx, y + 0.9 * dy, 0.7 * dx, 0.0, -0.375 * PI);
-      ctx.line_to(x + 0.3 * dx, y + 0.6 * dy);
-      ctx.line_to(x + 0.5 * dx, y + 0.5 * dy);
-      ctx.line_to(x + 0.35 * dx, y + 0.9 * dy);
-      ctx.line_to(x + 0.8 * dx, y + 0.9 * dy);
-      ctx.fill_preserve();
-      set_stroke_color();
-      ctx.stroke();
-    }
-    _ => {}
   }
 }
 
-fn render_full_board(ctx: &cairo::Context, board: &BoardState) -> () {
+fn render_drawing(ctx: &cairo::Context, handle: &Handle, x: f64, y: f64, dx: f64, dy: f64) {
+  ctx.push_group();
+  ctx.translate(x, y);
+  let dims = handle.get_dimensions();
+  ctx.scale(
+      dx / dims.width as f64,
+      dy / dims.height as f64
+  );
+  handle.render_cairo(&ctx);
+  ctx.pop_group_to_source();
+  ctx.paint();
+}
+
+fn render_piece(ctx: &cairo::Context, set: &ChessSet, piece: Piece, x: f64, y: f64, dx: f64, dy: f64) -> () {
+  let handle = match (piece.kind, piece.color) {
+    (PieceKind::King, Color::White) => &set.white_king,
+    (PieceKind::King, Color::Black) => &set.black_king,
+    (PieceKind::Queen, Color::White) => &set.white_queen,
+    (PieceKind::Queen, Color::Black) => &set.black_queen,
+    (PieceKind::Rook, Color::White) => &set.white_rook,
+    (PieceKind::Rook, Color::Black) => &set.black_rook,
+    (PieceKind::Bishop, Color::White) => &set.white_bishop,
+    (PieceKind::Bishop, Color::Black) => &set.black_bishop,
+    (PieceKind::Knight, Color::White) => &set.white_knight,
+    (PieceKind::Knight, Color::Black) => &set.black_knight,
+    (PieceKind::Pawn, Color::White) => &set.white_pawn,
+    (PieceKind::Pawn, Color::Black) => &set.black_pawn,
+  };
+  render_drawing(ctx, handle, x, y, dx, dy);
+}
+
+fn render_full_board(ctx: &cairo::Context, board: &BoardState, set: &ChessSet) -> () {
   let (dx, dy) = (1.0 / (WIDTH as f64), 1.0 / (HEIGHT as f64));
   for i in 0..WIDTH {
     for j in 0..HEIGHT {
@@ -833,7 +856,7 @@ fn render_full_board(ctx: &cairo::Context, board: &BoardState) -> () {
       ctx.rectangle(x, y, dx, dy);
       ctx.fill();
       if let SquareContent::Filled(piece) = square {
-        render_piece(ctx, piece, x, y, dx, dy);
+        render_piece(ctx, set, piece, x, y, dx, dy);
       }
     }
   }
@@ -847,7 +870,7 @@ fn game_thread(
 
   let ctx: cairo::Context = cairo::Context::new(&surface);
   ctx.scale(surface.get_width() as f64, surface.get_height() as f64);
-  render_full_board(&ctx, &gs.board);
+  render_full_board(&ctx, &gs.board, &gs.chess_set);
   drop(ctx);
   buffer.lock().unwrap().get_frame().copy_from_slice(&surface.get_data().unwrap());
   tx.send(());
