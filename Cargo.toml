@@ -2,10 +2,10 @@
 name = "rs-chess"
 version = "0.1.0"
 authors = ["Gurtej Kanwar <gurtejkanwar@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 cairo-rs = "0.4"
-pixels = "0.3"
-winit = "0.24"
+pixels = "0.12"
+winit = "0.28.6"
 rsvg = "0.4"
