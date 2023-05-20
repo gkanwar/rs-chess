@@ -103,7 +103,7 @@ fn in_bounds((x, y): (i32, i32)) -> bool {
 
 fn is_occupied((x, y): (i32, i32), board: &BoardState) -> bool {
   match board.squares[x as usize][y as usize] {
-    SquareContent::Filled(_) => true, // TODO
+    SquareContent::Filled(_) => true,
     SquareContent::Empty => false,
   }
 }
@@ -323,7 +323,7 @@ fn get_piece_pseudolegal_moves(
   return moves;
 }
 
-fn apply_move(m: &Move, bs: &BoardState) -> BoardState {
+pub fn apply_move(m: &Move, bs: &BoardState) -> BoardState {
   let mut bs2 = bs.clone();
   let squares = &mut bs2.squares;
   match m {
