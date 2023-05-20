@@ -48,7 +48,7 @@ impl BoardState {
   }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CastlingState {
   wk: bool,
   wq: bool,
@@ -61,7 +61,7 @@ impl CastlingState {
   }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GameState {
   pub board: BoardState,
   pub castling: CastlingState,
@@ -82,7 +82,7 @@ impl GameState {
 
 pub type Square = (usize, usize);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Move {
   Normal {
     origin: Square,
@@ -323,9 +323,75 @@ fn get_piece_pseudolegal_moves(
   return moves;
 }
 
-pub fn apply_move(m: &Move, bs: &BoardState) -> BoardState {
-  let mut bs2 = bs.clone();
-  let squares = &mut bs2.squares;
+pub fn deduce_move(origin: Square, target: Square, gs: &GameState) -> Option<Move> {
+  let origin_content = gs.board.squares[origin.0][origin.1];
+  let piece = match origin_content {
+    SquareContent::Empty => {
+      return None;
+    }
+    SquareContent::Filled(piece) => {
+      piece
+    }
+  };
+
+  let proposed_move = if let Piece { kind: PieceKind::King, color } = piece {
+    if target.0 == origin.0 + 2 {
+      Some(Move::CastleK(color))
+    }
+    else if origin.0 == target.0 + 2 {
+      Some(Move::CastleQ(color))
+    }
+    else {
+      Some(Move::Normal { origin: origin, target: target })
+    }
+  }
+  else if let Piece { kind: PieceKind::Pawn, .. } = piece {
+    if target.1 == 0 || target.1 == HEIGHT-1 {
+      Some(Move::Promote {
+        origin: origin, target: target,
+        // TODO: general promotions
+        kind: PieceKind::Queen
+      })
+    }
+    else {
+      Some(Move::Normal {
+        origin: origin, target: target
+      })
+    }
+  }
+  else {
+    Some(Move::Normal { origin: origin, target: target })
+  };
+
+
+  match proposed_move {
+    Some(mv) => {
+      let legal_moves = get_legal_moves(&gs);
+      if legal_moves.contains(&mv) {
+        Some(mv)
+      }
+      else {
+        None
+      }
+    }
+    None => None
+  }
+}
+
+pub fn apply_move(m: &Move, gs: &GameState) -> GameState {
+  let mut gs2: GameState = gs.clone();
+  let squares = &mut gs2.board.squares;
+  let do_castle = |king_file: usize, rook_file: usize, rank: usize, bs: &mut BoardState| {
+    let sign: i32 = if king_file < rook_file { 1 } else { -1 };
+    let k = bs.squares[king_file][rank];
+    let r = bs.squares[rook_file][rank];
+    bs.squares[rook_file][rank] = SquareContent::Empty;
+    bs.squares[king_file][rank] = SquareContent::Empty;
+    let target_king_file = (king_file as i32 + 2*sign) as usize;
+    let target_rook_file = (king_file as i32 + sign) as usize;
+    bs.squares[target_king_file][rank] = k;
+    bs.squares[target_rook_file][rank] = r;
+  };
   match m {
     Move::Normal { origin, target } => {
       squares[target.0][target.1] = squares[origin.0][origin.1];
@@ -343,35 +409,28 @@ pub fn apply_move(m: &Move, bs: &BoardState) -> BoardState {
       squares[origin.0][origin.1] = SquareContent::Empty;
     }
     Move::CastleK(Color::White) => {
-      assert_eq!(WIDTH, 8);
-      let k = squares[KING_FILE][0];
-      let r = squares[KROOK_FILE][0];
-      squares[KROOK_FILE][0] = k;
-      squares[KING_FILE][0] = r;
+      do_castle(KING_FILE, KROOK_FILE, 0, &mut gs2.board);
+      gs2.castling.wk = false;
+      gs2.castling.wq = false;
     }
     Move::CastleK(Color::Black) => {
-      assert_eq!(WIDTH, 8);
-      let k = squares[KING_FILE][HEIGHT - 1];
-      let r = squares[KROOK_FILE][HEIGHT - 1];
-      squares[KROOK_FILE][HEIGHT - 1] = k;
-      squares[KING_FILE][HEIGHT - 1] = r;
+      do_castle(KING_FILE, KROOK_FILE, HEIGHT - 1, &mut gs2.board);
+      gs2.castling.bk = false;
+      gs2.castling.bq = false;
     }
     Move::CastleQ(Color::White) => {
-      assert_eq!(WIDTH, 8);
-      let k = squares[KING_FILE][0];
-      let r = squares[QROOK_FILE][0];
-      squares[QROOK_FILE][0] = k;
-      squares[KING_FILE][0] = r;
+      do_castle(KING_FILE, QROOK_FILE, 0, &mut gs2.board);
+      gs2.castling.wk = false;
+      gs2.castling.wq = false;
     }
     Move::CastleQ(Color::Black) => {
-      assert_eq!(WIDTH, 8);
-      let k = squares[KING_FILE][HEIGHT - 1];
-      let r = squares[QROOK_FILE][HEIGHT - 1];
-      squares[QROOK_FILE][HEIGHT - 1] = k;
-      squares[KING_FILE][HEIGHT - 1] = r;
+      do_castle(KING_FILE, QROOK_FILE, HEIGHT - 1, &mut gs2.board);
+      gs2.castling.bk = false;
+      gs2.castling.bq = false;
     }
   }
-  return bs2;
+  gs2.active = opposite(gs2.active);
+  return gs2;
 }
 
 fn is_capture(m: &Move, board: &BoardState) -> bool {
@@ -423,12 +482,12 @@ fn in_check(board: &BoardState, color: Color) -> bool {
   return false;
 }
 
-fn get_legal_moves(gs: &GameState) -> Vec<Move> {
+pub fn get_legal_moves(gs: &GameState) -> Vec<Move> {
   let mut moves: Vec<Move> = get_pseudolegal_moves(&gs.board, gs.en_passant, gs.active)
     .iter()
     .filter(|m| {
-      let bs2 = apply_move(m, &gs.board);
-      return !in_check(&bs2, gs.active);
+      let gs2 = apply_move(m, &gs);
+      return !in_check(&gs2.board, gs.active);
     })
     .cloned()
     .collect();

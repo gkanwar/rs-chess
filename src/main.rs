@@ -37,13 +37,16 @@ impl AppState {
         }
       }
       Some(origin) => {
-        // TODO: handle more complicated moves
-        let proposed_move = Move::Normal {
-          origin: origin, target: square
-        };
-        let bs2 = apply_move(&proposed_move, &gs.board);
-        gs.board = bs2;
-        self.selected_square = None;
+        if square == origin {
+          self.selected_square = None;
+        }
+        else {
+          let maybe_move = deduce_move(origin, square, &gs);
+          if let Some(mv) = maybe_move {
+            self.game_state = apply_move(&mv, &gs);
+            self.selected_square = None;
+          }
+        }
       }
     }
   }
